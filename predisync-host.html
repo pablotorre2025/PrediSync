@@ -373,8 +373,15 @@ html[data-theme="light"] #offscriptOverlay { background: radial-gradient(circle 
    ============================================================ */
 
 /* === VERSIÓN: súbela +1 en CADA cambio del archivo (anti-caché) === */
-const APP_VERSION = "1.002";
+const APP_VERSION = "1.003";
 document.getElementById('versionBadge').textContent = "v" + APP_VERSION;
+
+const ICE_CONFIG = {
+  iceServers: [
+    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }
+  ],
+  iceCandidatePoolSize: 2
+};
 
 /* ============================================================
    ESTADO GLOBAL
@@ -488,7 +495,7 @@ const Sanitize = {
    ============================================================ */
 const Net = {
   init() {
-    State.pc = new RTCPeerConnection({ iceServers: [] }); // solo red local
+    State.pc = new RTCPeerConnection(ICE_CONFIG);
     State.pc.oniceconnectionstatechange = Net.onIceChange;
     State.pc.onconnectionstatechange = Net.onConnChange;
   },
@@ -498,16 +505,21 @@ const Net = {
     ch.onclose = () => { State.connected = false; App.setConn('err', 'Sin conexión'); };
     ch.onmessage = (e) => Protocol.receive(e.data);
   },
-  waitIce() {
+  waitIce(timeoutMs = 10000) {
     return new Promise((res) => {
       if (State.pc.iceGatheringState === 'complete') return res();
       const check = () => {
         if (State.pc.iceGatheringState === 'complete') {
-          State.pc.removeEventListener('icegatheringstatechange', check); res();
+          clearTimeout(timer);
+          State.pc.removeEventListener('icegatheringstatechange', check);
+          res();
         }
       };
       State.pc.addEventListener('icegatheringstatechange', check);
-      setTimeout(res, 2500); // fallback
+      const timer = setTimeout(() => {
+        State.pc.removeEventListener('icegatheringstatechange', check);
+        res();
+      }, timeoutMs);
     });
   },
   enc(obj) { return btoa(unescape(encodeURIComponent(JSON.stringify(obj)))); },

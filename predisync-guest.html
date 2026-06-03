@@ -313,7 +313,7 @@ html[data-theme="light"] #offscriptOverlay { background: radial-gradient(circle 
    ============================================================ */
 
 /* === VERSIÓN: súbela +1 en CADA cambio del archivo (anti-caché) === */
-const APP_VERSION = "1.019";
+const APP_VERSION = "1.020";
 document.getElementById('versionBadge').textContent = "v" + APP_VERSION;
 
 const CLOUD_SYNC = {
@@ -731,15 +731,52 @@ const Reader = {
     if (State.role === 'guest') return State.paragraphsEn;
     return State.paragraphsEs;
   },
+  scrollers() {
+    return ['readerViewport', 'screenReader']
+      .map((id) => document.getElementById(id))
+      .filter(Boolean);
+  },
   viewport() {
-    return document.getElementById('readerViewport');
+    const all = Reader.scrollers();
+    if (!all.length) return null;
+    let best = all[0];
+    let score = -1;
+    all.forEach((el) => {
+      const max = Math.max(0, el.scrollHeight - el.clientHeight);
+      const s = max + (el.scrollTop > 0 ? 100000 : 0);
+      if (s > score) { score = s; best = el; }
+    });
+    return best;
+  },
+  syncActiveVisual(i) {
+    document.querySelectorAll('.para').forEach((p) => p.classList.toggle('active', +p.dataset.index === i));
+    document.querySelectorAll('#navbar button').forEach((b, idx) => b.classList.toggle('active', idx === i));
+    Reader.updateProgress();
+  },
+  currentVisibleIndex(vp) {
+    const paras = Array.from(document.querySelectorAll('.para'));
+    if (!paras.length) return State.activeIndex;
+    const vpRect = vp.getBoundingClientRect();
+    const anchorY = vpRect.top + Math.min(vp.clientHeight * 0.28, 140);
+    let best = State.activeIndex;
+    let bestDist = Infinity;
+    paras.forEach((el, idx) => {
+      const r = el.getBoundingClientRect();
+      if (r.bottom < vpRect.top || r.top > vpRect.bottom) return;
+      const dist = Math.abs(r.top - anchorY);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = idx;
+      }
+    });
+    return best;
   },
   bindScrollSync() {
     if (Reader._scrollBound) return;
-    const vp = Reader.viewport();
-    if (!vp) return;
+    const targets = Reader.scrollers();
+    if (!targets.length) return;
     Reader._scrollBound = true;
-    vp.addEventListener('scroll', () => {
+    const onScroll = () => {
       if (Reader._remoteScrollLock) return;
       if (State.role !== 'host') return;
       if (document.getElementById('screenReader').classList.contains('hidden')) return;
@@ -749,12 +786,19 @@ const Reader = {
         Reader._scrollTicking = false;
         Reader.broadcastScrollPosition();
       });
-    }, { passive: true });
+    };
+    targets.forEach((el) => el.addEventListener('scroll', onScroll, { passive: true }));
   },
   broadcastScrollPosition() {
     if (State.role !== 'host') return;
     const vp = Reader.viewport();
-    const para = document.querySelector('.para[data-index="' + State.activeIndex + '"]');
+    if (!vp || vp.clientHeight < 20) return;
+    const idx = Reader.currentVisibleIndex(vp);
+    if (idx !== State.activeIndex) {
+      State.activeIndex = idx;
+      Reader.syncActiveVisual(idx);
+    }
+    const para = document.querySelector('.para[data-index="' + idx + '"]');
     if (!vp || !para || vp.clientHeight < 20) return;
     const vpRect = vp.getBoundingClientRect();
     const paraRect = para.getBoundingClientRect();
@@ -762,7 +806,7 @@ const Reader = {
     const travel = Math.max(0, para.scrollHeight - vp.clientHeight);
     const offset = vp.scrollTop - paraTop;
     const pct = travel > 0 ? Math.max(0, Math.min(1, offset / travel)) : 0;
-    Protocol.send({ type: 'scroll_pos', index: State.activeIndex, pct: +pct.toFixed(4) });
+    Protocol.send({ type: 'scroll_pos', index: idx, pct: +pct.toFixed(4) });
   },
   applyRemoteScroll(index, pct) {
     const vp = Reader.viewport();
@@ -845,11 +889,9 @@ const Reader = {
   },
   setActive(i, broadcast, scrollMode = 'start') {
     State.activeIndex = i;
-    document.querySelectorAll('.para').forEach((p) => p.classList.toggle('active', +p.dataset.index === i));
-    document.querySelectorAll('#navbar button').forEach((b, idx) => b.classList.toggle('active', idx === i));
+    Reader.syncActiveVisual(i);
     const el = document.querySelector('.para[data-index="' + i + '"]');
     if (el && scrollMode !== 'none') el.scrollIntoView({ behavior: 'smooth', block: scrollMode });
-    Reader.updateProgress();
     if (broadcast) {
       Protocol.send({ type: 'scroll', index: i });
       setTimeout(() => Reader.broadcastScrollPosition(), 80);

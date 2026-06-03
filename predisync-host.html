@@ -136,19 +136,50 @@ label.fld { display: block; font-size: 13px; font-weight: 600; margin: 14px 0 6p
 
 /* ===================== EDITOR (F14) ===================== */
 .toolbar {
-  display: flex; gap: 4px; overflow-x: auto; padding: 8px; background: var(--bg-elev2);
+  display: flex; gap: 6px; overflow-x: auto; overflow-y: visible; padding: 8px; background: var(--bg-elev2);
   border: 1px solid var(--border); border-bottom: none; border-radius: 10px 10px 0 0;
   -webkit-overflow-scrolling: touch;
 }
-.toolbar .grp { display: flex; gap: 4px; padding-right: 6px; border-right: 1px solid var(--border); margin-right: 2px; }
+.toolbar .grp { display: flex; gap: 4px; padding-right: 8px; border-right: 1px solid var(--border); margin-right: 2px; align-items: center; }
 .toolbar .grp:last-child { border-right: none; }
 .tbtn {
   min-width: 38px; height: 38px; padding: 0 8px; border-radius: 8px;
   border: 1px solid var(--border); background: var(--bg); font-size: 14px; font-weight: 600;
   display: inline-flex; align-items: center; justify-content: center; white-space: nowrap;
 }
+.tbtn.wide { min-width: 74px; padding: 0 10px; }
+.tbtn.select { min-width: 140px; padding: 0 6px; }
 .tbtn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 .tbtn select { background: transparent; border: none; color: inherit; font-size: 13px; outline: none; }
+.tbtn.select select { width: 100%; }
+.toolbar-palette {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+  padding: 10px 12px;
+}
+.palette-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.palette-row .label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-dim);
+  margin-right: 4px;
+}
+.swatch-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 2px solid var(--border);
+  background: var(--sw);
+  cursor: pointer;
+}
+.swatch-btn.sel { border-color: var(--accent); transform: translateY(-1px); }
 .editor {
   min-height: 240px; max-height: 46vh; overflow-y: auto; padding: 16px;
   background: var(--bg); border: 1px solid var(--border); border-radius: 0 0 10px 10px;
@@ -156,9 +187,6 @@ label.fld { display: block; font-size: 13px; font-weight: 600; margin: 14px 0 6p
 }
 .editor:empty:before { content: attr(data-ph); color: var(--text-dim); }
 .editor blockquote { border-left: 4px solid var(--accent); margin: 10px 0; padding: 4px 14px; color: var(--text-dim); font-style: italic; }
-.swatches { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 8px; }
-.swatch { aspect-ratio: 1; border-radius: 8px; border: 2px solid var(--border); position: relative; }
-.swatch.sel { border-color: var(--accent); }
 
 /* ===================== VISTA LECTOR ===================== */
 .topbar {
@@ -229,6 +257,7 @@ html[data-theme="light"] #offscriptOverlay { background: radial-gradient(circle 
 /* ===================== FICHAS MANUALES ===================== */
 .cards-tools { display: flex; gap: 8px; flex-wrap: wrap; }
 .cards-list { display: grid; gap: 10px; margin-top: 10px; }
+.cards-note { margin: 8px 0 12px; }
 .card-item {
   border: 1px solid var(--border);
   border-left-width: 6px;
@@ -340,36 +369,34 @@ html[data-theme="light"] #offscriptOverlay { background: radial-gradient(circle 
         <button class="tbtn" data-block="title" title="Título de sección">T</button>
       </div>
       <div class="grp">
-        <button class="tbtn" id="textColorBtn" title="Color de texto">A<span style="color:var(--accent)">▾</span></button>
-        <button class="tbtn" id="hiliteBtn" title="Resaltar">🖍▾</button>
+        <button class="tbtn" id="textColorBtn" title="Color de texto">A ▾</button>
+        <button class="tbtn" id="hiliteBtn" title="Resaltar">🖍 ▾</button>
+      </div>
+      <div class="grp">
+        <span class="tbtn select">
+          <select id="cardTargetSelect" title="Ficha destino"></select>
+        </span>
+        <button class="tbtn wide" id="cardFromSelBtn" title="Guardar selección en ficha">+ Ficha</button>
+        <button class="tbtn wide" id="cardEmptyBtn" title="Nueva ficha vacía">Vacía</button>
       </div>
     </div>
+    <div id="toolbarPaletteHost" class="toolbar-palette hidden">
+      <div id="textColorPopover" class="palette-row hidden"></div>
+      <div id="hilitePopover" class="palette-row hidden"></div>
+    </div>
     <div class="editor" id="editorEs" contenteditable="true" data-ph="Pega o escribe aquí tu predicación. Separa los párrafos con una línea en blanco."></div>
-
-    <details style="margin-top:14px" open>
-      <summary class="muted" style="cursor:pointer">Color de texto y paleta de resaltado</summary>
-      <div class="card">
-        <label class="fld">Color de texto</label>
-        <input type="color" id="textColorPicker" value="#4f8cff" style="width:100%;height:40px;border:none;background:none">
-        <label class="fld">Colores rápidos de texto</label>
-        <div class="swatches" id="textColorSwatches"></div>
-        <label class="fld">Paleta de resaltado (mantén presionado / clic derecho para personalizar)</label>
-        <div class="swatches" id="hiliteSwatches"></div>
-        <button class="btn full" style="margin-top:10px" onclick="Editor.resetPalette()">Restaurar predeterminados</button>
-      </div>
-    </details>
 
     <h2>Texto en Inglés (versión del traductor)</h2>
     <textarea id="textEn" placeholder="Pega aquí tu traducción en inglés. Usa línea en blanco para separar párrafos."></textarea>
 
-    <h2>Fichas manuales (Opción 2)</h2>
-    <p class="muted">Pega todo tu sermón una sola vez y crea fichas desde la selección. Cada ficha puede tener nombre, color, texto en español y texto en inglés.</p>
-    <div class="cards-tools">
-      <button class="btn" onclick="Cards.createFromSelection()">Crear ficha desde selección</button>
-      <button class="btn" onclick="Cards.addEmpty()">Nueva ficha vacía</button>
-      <button class="btn" onclick="Cards.clearAll()">Limpiar fichas</button>
-    </div>
-    <div id="cardsList" class="cards-list"></div>
+    <details style="margin-top:14px">
+      <summary class="muted" style="cursor:pointer">Editor de fichas (nombre, color y traducción)</summary>
+      <p class="muted cards-note">Selecciona texto y usa la barra superior para crear o actualizar fichas sin salir del editor.</p>
+      <div class="cards-tools">
+        <button class="btn danger" onclick="Cards.clearAll()">Limpiar todas las fichas</button>
+      </div>
+      <div id="cardsList" class="cards-list"></div>
+    </details>
 
     <p id="loadWarn" class="muted" style="color:var(--warn)"></p>
     <button class="btn primary full" style="margin-top:16px" onclick="App.startSession()">Cargar y comenzar ▶</button>
@@ -413,7 +440,7 @@ html[data-theme="light"] #offscriptOverlay { background: radial-gradient(circle 
    ============================================================ */
 
 /* === VERSIÓN: súbela +1 en CADA cambio del archivo (anti-caché) === */
-const APP_VERSION = "1.015";
+const APP_VERSION = "1.016";
 document.getElementById('versionBadge').textContent = "v" + APP_VERSION;
 
 const CLOUD_SYNC = {
@@ -431,6 +458,7 @@ const State = {
   connected: false,
   lastSyncRequestAt: 0,
   cards: [],
+  cardTarget: -1,
   cardMeta: [],
   paragraphsEs: [],
   paragraphsEn: [],
@@ -730,6 +758,8 @@ const Editor = {
   hiliteSel: 0,
   textColorSel: 1,
   textColors: DEFAULT_TEXT_COLORS.slice(),
+  activePalette: null,
+  savedRange: null,
   async init() {
     const ff = document.getElementById('fontFamily');
     FONTS.forEach(([name, val]) => { const o = document.createElement('option'); o.value = val; o.textContent = name; ff.appendChild(o); });
@@ -743,15 +773,67 @@ const Editor = {
 
     ff.addEventListener('change', () => Editor.applyStyle('fontName', ff.value));
     fs.addEventListener('change', () => Editor.applyFontSize(fs.value));
-    document.getElementById('textColorBtn').addEventListener('click', () =>
-      Editor.applyTextColor(document.getElementById('textColorPicker').value));
-    document.getElementById('textColorPicker').addEventListener('input', (e) =>
-      Editor.applyTextColor(e.target.value));
-    document.getElementById('hiliteBtn').addEventListener('click', () => Editor.applyHilite());
+    document.getElementById('textColorBtn').addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      Editor.captureSelection();
+      Editor.togglePalette('text');
+    });
+    document.getElementById('hiliteBtn').addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      Editor.captureSelection();
+      Editor.togglePalette('hilite');
+    });
+    document.getElementById('editorEs').addEventListener('mouseup', () => Editor.captureSelection());
+    document.getElementById('editorEs').addEventListener('keyup', () => Editor.captureSelection());
+    document.addEventListener('click', (e) => {
+      if (e.target.closest('#editorToolbar') || e.target.closest('#toolbarPaletteHost')) return;
+      Editor.closePalettes();
+    });
 
     State.palette = (await DB.getSetting('palette')) || DEFAULT_PALETTE.slice();
     Editor.renderTextColorSwatches();
     Editor.renderSwatches();
+  },
+  captureSelection() {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+    const range = sel.getRangeAt(0);
+    const anchor = range.commonAncestorContainer.nodeType === 1 ? range.commonAncestorContainer : range.commonAncestorContainer.parentElement;
+    const editor = document.getElementById('editorEs');
+    if (anchor && editor.contains(anchor)) Editor.savedRange = range.cloneRange();
+  },
+  restoreSelection() {
+    const editor = document.getElementById('editorEs');
+    editor.focus();
+    if (!Editor.savedRange) return;
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(Editor.savedRange);
+  },
+  togglePalette(which) {
+    const host = document.getElementById('toolbarPaletteHost');
+    const text = document.getElementById('textColorPopover');
+    const hilite = document.getElementById('hilitePopover');
+    if (Editor.activePalette === which) {
+      Editor.closePalettes();
+      return;
+    }
+    host.classList.remove('hidden');
+    text.classList.toggle('hidden', which !== 'text');
+    hilite.classList.toggle('hidden', which !== 'hilite');
+    Editor.activePalette = which;
+    document.getElementById('textColorBtn').classList.toggle('active', which === 'text');
+    document.getElementById('hiliteBtn').classList.toggle('active', which === 'hilite');
+  },
+  closePalettes() {
+    document.getElementById('toolbarPaletteHost').classList.add('hidden');
+    document.getElementById('textColorPopover').classList.add('hidden');
+    document.getElementById('hilitePopover').classList.add('hidden');
+    document.getElementById('textColorBtn').classList.remove('active');
+    document.getElementById('hiliteBtn').classList.remove('active');
+    Editor.activePalette = null;
   },
   applyStyle(cmd, val) { document.getElementById('editorEs').focus(); document.execCommand(cmd, false, val); },
   escapeHtml(text) {
@@ -772,23 +854,25 @@ const Editor = {
   },
   applyTextColor(color) {
     const c = color || '#4f8cff';
-    document.getElementById('editorEs').focus();
+    Editor.restoreSelection();
     document.execCommand('foreColor', false, c);
-    document.getElementById('textColorPicker').value = c;
     const idx = Editor.textColors.findIndex((x) => x.toLowerCase() === c.toLowerCase());
     if (idx >= 0) {
       Editor.textColorSel = idx;
       Editor.renderTextColorSwatches();
     }
+    Editor.closePalettes();
   },
   renderTextColorSwatches() {
-    const c = document.getElementById('textColorSwatches');
+    const c = document.getElementById('textColorPopover');
     if (!c) return;
-    c.innerHTML = '';
+    c.innerHTML = '<span class="label">Texto</span>';
     Editor.textColors.forEach((col, i) => {
-      const d = document.createElement('div');
-      d.className = 'swatch' + (i === Editor.textColorSel ? ' sel' : '');
-      d.style.background = col;
+      const d = document.createElement('button');
+      d.type = 'button';
+      d.className = 'swatch-btn' + (i === Editor.textColorSel ? ' sel' : '');
+      d.style.setProperty('--sw', col);
+      d.title = col;
       d.addEventListener('click', () => {
         Editor.textColorSel = i;
         Editor.renderTextColorSwatches();
@@ -804,8 +888,9 @@ const Editor = {
   },
   applyHilite() {
     const color = State.palette[Editor.hiliteSel];
-    document.getElementById('editorEs').focus();
+    Editor.restoreSelection();
     if (!document.execCommand('hiliteColor', false, color)) document.execCommand('backColor', false, color);
+    Editor.closePalettes();
   },
   insertBlock(kind) {
     document.getElementById('editorEs').focus();
@@ -814,12 +899,18 @@ const Editor = {
     else if (kind === 'title') { document.execCommand('formatBlock', false, 'h3'); }
   },
   renderSwatches() {
-    const c = document.getElementById('hiliteSwatches'); c.innerHTML = '';
+    const c = document.getElementById('hilitePopover'); c.innerHTML = '<span class="label">Highlight</span>';
     State.palette.forEach((col, i) => {
-      const d = document.createElement('div');
-      d.className = 'swatch' + (i === Editor.hiliteSel ? ' sel' : '');
-      d.style.background = col;
-      d.addEventListener('click', () => { Editor.hiliteSel = i; Editor.renderSwatches(); });
+      const d = document.createElement('button');
+      d.type = 'button';
+      d.className = 'swatch-btn' + (i === Editor.hiliteSel ? ' sel' : '');
+      d.style.setProperty('--sw', col);
+      d.title = col;
+      d.addEventListener('click', () => {
+        Editor.hiliteSel = i;
+        Editor.renderSwatches();
+        Editor.applyHilite();
+      });
       d.addEventListener('contextmenu', (e) => { e.preventDefault(); Editor.editSwatch(i); });
       let lp; d.addEventListener('touchstart', () => { lp = setTimeout(() => Editor.editSwatch(i), 600); }, {passive:true});
       d.addEventListener('touchend', () => clearTimeout(lp));
@@ -884,6 +975,18 @@ const Cards = {
       App.toast('La selección está vacía');
       return;
     }
+
+    const target = Cards.getSelectedTarget();
+    if (target >= 0 && target < State.cards.length) {
+      const current = Cards.sanitizeHtml(State.cards[target].es || '');
+      State.cards[target].es = current && Reader.plainText(current)
+        ? Cards.sanitizeHtml(current + '<p><br></p>' + html)
+        : html;
+      Cards.render();
+      App.toast('Texto agregado a ' + (State.cards[target].title || ('Ficha ' + (target + 1))));
+      return;
+    }
+
     const idx = State.cards.length;
     State.cards.push({
       id: 'card-' + Date.now() + '-' + idx,
@@ -892,6 +995,7 @@ const Cards = {
       es: html,
       en: ''
     });
+    State.cardTarget = idx;
     Cards.render();
     App.toast('Ficha creada');
   },
@@ -904,6 +1008,7 @@ const Cards = {
       es: '<p></p>',
       en: ''
     });
+    State.cardTarget = idx;
     Cards.render();
   },
   removeAt(i) {
@@ -920,14 +1025,48 @@ const Cards = {
   },
   clearAll() {
     State.cards = [];
+    State.cardTarget = -1;
     Cards.render();
+  },
+  getSelectedTarget() {
+    const sel = document.getElementById('cardTargetSelect');
+    if (!sel) return -1;
+    const v = parseInt(sel.value, 10);
+    return Number.isNaN(v) ? -1 : v;
+  },
+  renderTargetSelect() {
+    const sel = document.getElementById('cardTargetSelect');
+    if (!sel) return;
+    const current = State.cardTarget;
+    sel.innerHTML = '<option value="-1">Nueva ficha</option>';
+    State.cards.forEach((card, i) => {
+      const o = document.createElement('option');
+      o.value = String(i);
+      o.textContent = (card.title || ('Ficha ' + (i + 1))).slice(0, 34);
+      sel.appendChild(o);
+    });
+    if (current >= 0 && current < State.cards.length) sel.value = String(current);
+    else sel.value = '-1';
+    State.cardTarget = parseInt(sel.value, 10);
+  },
+  initToolbar() {
+    const fromSel = document.getElementById('cardFromSelBtn');
+    const empty = document.getElementById('cardEmptyBtn');
+    const target = document.getElementById('cardTargetSelect');
+    if (fromSel) fromSel.addEventListener('click', () => Cards.createFromSelection());
+    if (empty) empty.addEventListener('click', () => Cards.addEmpty());
+    if (target) target.addEventListener('change', () => {
+      State.cardTarget = parseInt(target.value, 10);
+    });
+    Cards.renderTargetSelect();
   },
   render() {
     const list = document.getElementById('cardsList');
     if (!list) return;
     list.innerHTML = '';
+    Cards.renderTargetSelect();
     if (!State.cards.length) {
-      list.innerHTML = '<p class="muted">Aún no hay fichas. Selecciona texto del editor y pulsa "Crear ficha desde selección".</p>';
+      list.innerHTML = '<p class="muted">Aún no hay fichas. Selecciona texto y usa + Ficha en la barra superior.</p>';
       return;
     }
     State.cards.forEach((card, i) => {
@@ -948,6 +1087,7 @@ const Cards = {
 
       item.querySelector('.title').addEventListener('input', (e) => {
         card.title = e.target.value.trim() || ('Ficha ' + (i + 1));
+        Cards.renderTargetSelect();
       });
       item.querySelector('.color').addEventListener('input', (e) => {
         card.color = e.target.value;
@@ -1354,6 +1494,7 @@ document.addEventListener('keydown', (e) => {
   else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) document.documentElement.setAttribute('data-theme', 'light');
   else document.documentElement.setAttribute('data-theme', 'dark');
   await Editor.init();
+  Cards.initToolbar();
   Cards.render();
   Annotate.init();
   App.show('screenConnect');

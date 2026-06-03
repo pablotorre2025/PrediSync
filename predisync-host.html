@@ -367,7 +367,7 @@ html[data-theme="light"] #offscriptOverlay { background: radial-gradient(circle 
    ============================================================ */
 
 /* === VERSIÓN: súbela +1 en CADA cambio del archivo (anti-caché) === */
-const APP_VERSION = "1.010";
+const APP_VERSION = "1.011";
 document.getElementById('versionBadge').textContent = "v" + APP_VERSION;
 
 const CLOUD_SYNC = {
@@ -791,7 +791,11 @@ const Reader = {
       const div = document.createElement('div');
       div.className = 'para' + (i === State.activeIndex ? ' active' : '');
       div.dataset.index = i;
-      div.innerHTML = Reader.applyAnnotations(Reader.normalizePara(html), i);
+      const rendered = Reader.applyAnnotations(Reader.normalizePara(html), i);
+      div.innerHTML = rendered;
+      if (!div.textContent.trim()) {
+        div.textContent = Reader.plainText(html) || '(Texto no disponible)';
+      }
       if (State.role === 'host') {
         div.addEventListener('click', () => { if (!State.editMode) Reader.setActive(i, true); });
       }
@@ -988,6 +992,7 @@ const App = {
       }
       State.paragraphsEs = es;
       State.paragraphsEn = en;
+      State.showingLang = 'es';
       State.activeIndex = 0;
       const rec = {
         id: 'id-' + Date.now(), date: new Date().toISOString(),

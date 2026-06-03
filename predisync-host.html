@@ -61,16 +61,16 @@ button { font-family: inherit; cursor: pointer; color: inherit; }
 #versionBadge {
   position: fixed;
   left: 10px;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
-  z-index: 1200;
-  font-size: 11px;
+  top: calc(env(safe-area-inset-top, 0px) + 8px);
+  z-index: 9999;
+  font-size: 12px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: #fff;
   background: linear-gradient(135deg, #1f66ff, #4a7eff);
   border: 1px solid rgba(255,255,255,.28);
   border-radius: 999px;
-  padding: 4px 10px;
+  padding: 5px 11px;
   letter-spacing: .35px;
   pointer-events: none;
   user-select: none;
@@ -367,7 +367,7 @@ html[data-theme="light"] #offscriptOverlay { background: radial-gradient(circle 
    ============================================================ */
 
 /* === VERSIÓN: súbela +1 en CADA cambio del archivo (anti-caché) === */
-const APP_VERSION = "1.006";
+const APP_VERSION = "1.007";
 document.getElementById('versionBadge').textContent = "v" + APP_VERSION;
 
 const CLOUD_SYNC = {

@@ -316,6 +316,8 @@ html[data-theme="light"] #offscriptOverlay { background: radial-gradient(circle 
       <div class="card">
         <label class="fld">Color de texto</label>
         <input type="color" id="textColorPicker" value="#4f8cff" style="width:100%;height:40px;border:none;background:none">
+        <label class="fld">Colores rápidos de texto</label>
+        <div class="swatches" id="textColorSwatches"></div>
         <label class="fld">Paleta de resaltado (mantén presionado / clic derecho para personalizar)</label>
         <div class="swatches" id="hiliteSwatches"></div>
         <button class="btn full" style="margin-top:10px" onclick="Editor.resetPalette()">Restaurar predeterminados</button>
@@ -367,7 +369,7 @@ html[data-theme="light"] #offscriptOverlay { background: radial-gradient(circle 
    ============================================================ */
 
 /* === VERSIÓN: súbela +1 en CADA cambio del archivo (anti-caché) === */
-const APP_VERSION = "1.012";
+const APP_VERSION = "1.014";
 document.getElementById('versionBadge').textContent = "v" + APP_VERSION;
 
 const CLOUD_SYNC = {
@@ -674,9 +676,12 @@ const FONTS = [
 ];
 const SIZES = [11,12,13,14,15,16,17,18,20,22,24,26,28,30,32,34,36,40,44,48,50,52];
 const DEFAULT_PALETTE = ['#FFFF00','#FFB347','#FFB6C1','#ADFF2F','#87CEEB','#98FF98','#E6E6FA','#FFDAB9','#AFEEEE','#F08080'];
+const DEFAULT_TEXT_COLORS = ['#111111','#1f66ff','#0ea5e9','#16a34a','#eab308','#ea580c','#dc2626','#7c3aed','#db2777','#ffffff'];
 
 const Editor = {
   hiliteSel: 0,
+  textColorSel: 1,
+  textColors: DEFAULT_TEXT_COLORS.slice(),
   async init() {
     const ff = document.getElementById('fontFamily');
     FONTS.forEach(([name, val]) => { const o = document.createElement('option'); o.value = val; o.textContent = name; ff.appendChild(o); });
@@ -691,15 +696,54 @@ const Editor = {
     ff.addEventListener('change', () => Editor.applyStyle('fontName', ff.value));
     fs.addEventListener('change', () => Editor.applyFontSize(fs.value));
     document.getElementById('textColorBtn').addEventListener('click', () =>
-      document.execCommand('foreColor', false, document.getElementById('textColorPicker').value));
+      Editor.applyTextColor(document.getElementById('textColorPicker').value));
     document.getElementById('textColorPicker').addEventListener('input', (e) =>
-      document.execCommand('foreColor', false, e.target.value));
+      Editor.applyTextColor(e.target.value));
     document.getElementById('hiliteBtn').addEventListener('click', () => Editor.applyHilite());
 
     State.palette = (await DB.getSetting('palette')) || DEFAULT_PALETTE.slice();
+    Editor.renderTextColorSwatches();
     Editor.renderSwatches();
   },
   applyStyle(cmd, val) { document.getElementById('editorEs').focus(); document.execCommand(cmd, false, val); },
+  escapeHtml(text) {
+    return String(text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  },
+  splitPlainIntoParagraphs(text) {
+    const plain = String(text || '').replace(/\r\n/g, '\n');
+    let parts = plain.split(/\n\s*\n/).map(t => t.trim()).filter(Boolean);
+    if (parts.length <= 1) {
+      parts = plain.split(/\n+/).map(t => t.trim()).filter(Boolean);
+    }
+    return parts.map((t) => '<p>' + Editor.escapeHtml(t).replace(/\n/g, '<br>') + '</p>');
+  },
+  applyTextColor(color) {
+    const c = color || '#4f8cff';
+    document.getElementById('editorEs').focus();
+    document.execCommand('foreColor', false, c);
+    document.getElementById('textColorPicker').value = c;
+    const idx = Editor.textColors.findIndex((x) => x.toLowerCase() === c.toLowerCase());
+    if (idx >= 0) {
+      Editor.textColorSel = idx;
+      Editor.renderTextColorSwatches();
+    }
+  },
+  renderTextColorSwatches() {
+    const c = document.getElementById('textColorSwatches');
+    if (!c) return;
+    c.innerHTML = '';
+    Editor.textColors.forEach((col, i) => {
+      const d = document.createElement('div');
+      d.className = 'swatch' + (i === Editor.textColorSel ? ' sel' : '');
+      d.style.background = col;
+      d.addEventListener('click', () => {
+        Editor.textColorSel = i;
+        Editor.renderTextColorSwatches();
+        Editor.applyTextColor(col);
+      });
+      c.appendChild(d);
+    });
+  },
   applyFontSize(px) {
     document.getElementById('editorEs').focus();
     document.execCommand('fontSize', false, 7);
@@ -739,17 +783,18 @@ const Editor = {
   extractParagraphs() {
     const ed = document.getElementById('editorEs');
     const blocks = [];
-    ed.childNodes.forEach((n) => {
-      if (n.nodeType === 1) {
-        const h = n.outerHTML.trim();
-        if (h && n.textContent.trim() !== '' || n.tagName === 'HR') blocks.push(h);
-      } else if (n.nodeType === 3 && n.textContent.trim()) {
-        blocks.push('<p>' + n.textContent.trim() + '</p>');
-      }
+    const blockSelector = 'h1,h2,h3,h4,h5,h6,p,blockquote,ul,ol,pre,hr';
+    const domBlocks = Array.from(ed.querySelectorAll(blockSelector)).filter((el) => {
+      const parentBlock = el.parentElement ? el.parentElement.closest(blockSelector) : null;
+      return !parentBlock || !ed.contains(parentBlock);
+    });
+    domBlocks.forEach((el) => {
+      const h = el.outerHTML.trim();
+      if (h && (el.textContent.trim() !== '' || el.tagName === 'HR')) blocks.push(h);
     });
     if (blocks.length === 0) {
-      // fallback: dividir texto plano por líneas en blanco
-      ed.innerText.split(/\n\s*\n/).map(t => t.trim()).filter(Boolean).forEach(t => blocks.push('<p>' + t + '</p>'));
+      // fallback: dividir texto plano y conservar saltos de línea visibles
+      Editor.splitPlainIntoParagraphs(ed.innerText).forEach((h) => blocks.push(h));
     }
     return blocks;
   }
@@ -980,11 +1025,7 @@ const App = {
   startSession() {
     if (State.role === 'host') {
       const es = Editor.extractParagraphs();
-      const en = document.getElementById('textEn').value
-        .split(/\n\s*\n/)
-        .map(t => t.trim())
-        .filter(Boolean)
-        .map(t => '<p>' + t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</p>');
+      const en = Editor.splitPlainIntoParagraphs(document.getElementById('textEn').value);
       if (es.length === 0) { document.getElementById('loadWarn').textContent = 'Escribe el texto de tu predicación.'; return; }
       if (en.length === 0) { document.getElementById('loadWarn').textContent = 'Pega también tu versión en inglés para el traductor.'; return; }
       if (en.length !== es.length) {

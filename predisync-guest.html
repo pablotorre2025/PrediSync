@@ -313,7 +313,7 @@ html[data-theme="light"] #offscriptOverlay { background: radial-gradient(circle 
    ============================================================ */
 
 /* === VERSIÓN: súbela +1 en CADA cambio del archivo (anti-caché) === */
-const APP_VERSION = "1.007";
+const APP_VERSION = "1.008";
 document.getElementById('versionBadge').textContent = "v" + APP_VERSION;
 
 const CLOUD_SYNC = {
@@ -564,8 +564,20 @@ const Protocol = {
     let msg; try { msg = JSON.parse(raw); } catch (e) { return; }
     switch (msg.type) {
       case 'sermon':
-        State.paragraphsEs = (msg.paragraphs_es || []).map(Sanitize.clean);
-        State.paragraphsEn = (msg.paragraphs_en || []).map(Sanitize.clean);
+        {
+          const es = (msg.paragraphs_es || []).map(Sanitize.clean);
+          const en = (msg.paragraphs_en || []).map(Sanitize.clean);
+          const enHasText = Reader.hasVisibleText(en);
+          const esHasText = Reader.hasVisibleText(es);
+          State.paragraphsEs = es;
+          State.paragraphsEn = enHasText ? en : ((State.role === 'guest' && esHasText) ? es : en);
+          if (State.role === 'guest' && !enHasText) {
+            if (esHasText) App.connErr('No llego texto en ingles. Mostrando respaldo mientras resincroniza.');
+            Net.sendSyncRequest();
+          } else {
+            App.connErr('');
+          }
+        }
         State.annotations = msg.annotations || [];
         Reader.render();
         break;
@@ -692,6 +704,18 @@ const Editor = {
    VISTA LECTOR (Fases 4 y 5)
    ============================================================ */
 const Reader = {
+  plainText(html) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html || '';
+    return (tmp.textContent || '').replace(/\s+/g, ' ').trim();
+  },
+  hasVisibleText(paras) {
+    return (paras || []).some((p) => Reader.plainText(p).length > 0);
+  },
+  normalizePara(html) {
+    if (Reader.plainText(html).length > 0) return html;
+    return '<p class="muted">(Parrafo vacio)</p>';
+  },
   getParas() {
     if (State.role === 'host' && State.showingLang === 'en' && State.paragraphsEn.length) return State.paragraphsEn;
     if (State.role === 'guest') return State.paragraphsEn;
@@ -701,8 +725,9 @@ const Reader = {
     const body = document.getElementById('readerBody');
     const paras = Reader.getParas();
     body.innerHTML = '';
-    if (State.role === 'guest' && paras.length === 0) {
-      body.innerHTML = '<p class="muted">Esperando texto en inglés desde el predicador…</p>';
+    if (State.role === 'guest' && (!paras.length || !Reader.hasVisibleText(paras))) {
+      body.innerHTML = '<p class="muted">Esperando texto visible desde el predicador…</p>';
+      Net.sendSyncRequest();
       Reader.updateProgress();
       Reader.applyFontVars();
       return;
@@ -711,7 +736,7 @@ const Reader = {
       const div = document.createElement('div');
       div.className = 'para' + (i === State.activeIndex ? ' active' : '');
       div.dataset.index = i;
-      div.innerHTML = Reader.applyAnnotations(html, i);
+      div.innerHTML = Reader.applyAnnotations(Reader.normalizePara(html), i);
       if (State.role === 'host') {
         div.addEventListener('click', () => { if (!State.editMode) Reader.setActive(i, true); });
       }

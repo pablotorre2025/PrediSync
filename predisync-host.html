@@ -367,7 +367,7 @@ html[data-theme="light"] #offscriptOverlay { background: radial-gradient(circle 
    ============================================================ */
 
 /* === VERSIÓN: súbela +1 en CADA cambio del archivo (anti-caché) === */
-const APP_VERSION = "1.011";
+const APP_VERSION = "1.012";
 document.getElementById('versionBadge').textContent = "v" + APP_VERSION;
 
 const CLOUD_SYNC = {
@@ -958,7 +958,7 @@ const Annotate = {
    ============================================================ */
 const App = {
   show(id) {
-    document.querySelectorAll('.screen').forEach((s) => s.classList.add('hidden'));
+    document.querySelectorAll('section.screen').forEach((s) => s.classList.add('hidden'));
     document.getElementById(id).classList.remove('hidden');
   },
   chooseRole(role) {

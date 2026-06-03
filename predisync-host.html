@@ -389,7 +389,7 @@ html[data-theme="light"] #offscriptOverlay { background: radial-gradient(circle 
     <h2>Texto en Inglés (versión del traductor)</h2>
     <textarea id="textEn" placeholder="Pega aquí tu traducción en inglés. Usa línea en blanco para separar párrafos."></textarea>
 
-    <details style="margin-top:14px">
+    <details id="cardsDetails" style="margin-top:14px">
       <summary class="muted" style="cursor:pointer">Editor de fichas (nombre, color y traducción)</summary>
       <p class="muted cards-note">Selecciona texto y usa + Ficha en la barra para crear una ficha nueva sin sobrescribir otras.</p>
       <div class="cards-tools">
@@ -440,7 +440,7 @@ html[data-theme="light"] #offscriptOverlay { background: radial-gradient(circle 
    ============================================================ */
 
 /* === VERSIÓN: súbela +1 en CADA cambio del archivo (anti-caché) === */
-const APP_VERSION = "1.017";
+const APP_VERSION = "1.018";
 document.getElementById('versionBadge').textContent = "v" + APP_VERSION;
 
 const CLOUD_SYNC = {
@@ -851,6 +851,19 @@ const Editor = {
     }
     return parts.map((t) => '<p>' + Editor.escapeHtml(t).replace(/\n/g, '<br>') + '</p>');
   },
+  htmlToPlainText(html) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html || '';
+    return (tmp.textContent || '').replace(/\s+/g, ' ').trim();
+  },
+  loadEditorFromRecord(rec) {
+    const editor = document.getElementById('editorEs');
+    const textEn = document.getElementById('textEn');
+    const es = Array.isArray(rec.paragraphs_es) ? rec.paragraphs_es : [];
+    const en = Array.isArray(rec.paragraphs_en) ? rec.paragraphs_en : [];
+    editor.innerHTML = es.join('');
+    textEn.value = en.map((h) => Editor.htmlToPlainText(h)).filter(Boolean).join('\n\n');
+  },
   applyTextColor(color) {
     const c = color || '#4f8cff';
     Editor.restoreSelection();
@@ -954,6 +967,34 @@ const Cards = {
     const t = Reader.plainText(html).slice(0, 40);
     return t || fallback;
   },
+  revealPanel() {
+    const details = document.getElementById('cardsDetails');
+    if (!details) return;
+    details.open = true;
+  },
+  fromRecord(rec) {
+    const cards = Array.isArray(rec.cards) ? rec.cards : [];
+    if (cards.length) {
+      return cards.map((c, i) => ({
+        id: c.id || ('card-load-' + Date.now() + '-' + i),
+        title: (c.title || ('Ficha ' + (i + 1))).trim(),
+        color: c.color || Cards.colorAt(i),
+        es: Cards.sanitizeHtml(c.es || ''),
+        en: String(c.en || '').trim()
+      }));
+    }
+    const meta = Array.isArray(rec.card_meta) ? rec.card_meta : [];
+    const es = Array.isArray(rec.paragraphs_es) ? rec.paragraphs_es : [];
+    const en = Array.isArray(rec.paragraphs_en) ? rec.paragraphs_en : [];
+    if (!meta.length) return [];
+    return es.map((esHtml, i) => ({
+      id: 'card-load-' + Date.now() + '-' + i,
+      title: (meta[i] && meta[i].title) || ('Ficha ' + (i + 1)),
+      color: (meta[i] && meta[i].color) || Cards.colorAt(i),
+      es: Cards.sanitizeHtml(esHtml || ''),
+      en: Editor.htmlToPlainText(en[i] || '')
+    }));
+  },
   createFromSelection() {
     const editor = document.getElementById('editorEs');
     const sel = window.getSelection();
@@ -983,6 +1024,7 @@ const Cards = {
       es: html,
       en: ''
     });
+    Cards.revealPanel();
     Cards.render();
     App.toast('Ficha creada');
   },
@@ -995,6 +1037,7 @@ const Cards = {
       es: '<p></p>',
       en: ''
     });
+    Cards.revealPanel();
     Cards.render();
   },
   removeAt(i) {
@@ -1021,6 +1064,7 @@ const Cards = {
     const list = document.getElementById('cardsList');
     if (!list) return;
     list.innerHTML = '';
+    if (State.cards.length) Cards.revealPanel();
     if (!State.cards.length) {
       list.innerHTML = '<p class="muted">Aún no hay fichas. Selecciona texto y usa + Ficha en la barra superior.</p>';
       return;
@@ -1406,16 +1450,17 @@ const App = {
     });
   },
   loadHistory(rec) {
-    State.paragraphsEs = rec.paragraphs_es;
+    State.paragraphsEs = rec.paragraphs_es || [];
     State.paragraphsEn = rec.paragraphs_en || [];
     State.cardMeta = rec.card_meta || [];
-    State.cards = rec.cards || [];
+    State.cards = Cards.fromRecord(rec);
     State.annotations = rec.annotations || [];
     if (rec.palette) { State.palette = rec.palette; Editor.renderSwatches(); }
+    Editor.loadEditorFromRecord(rec);
     Cards.render();
-    State.activeIndex = 0;
-    Reader.broadcastSermon();
-    App.enterReader();
+    document.getElementById('loadWarn').textContent = 'Predicación cargada al editor. Revisa/edita y luego pulsa "Cargar y comenzar".';
+    App.show('screenLoad');
+    App.toast('Predicación cargada');
   },
   async pruneHistory() {
     const all = (await DB.allSermons()).sort((a, b) => a.date.localeCompare(b.date));

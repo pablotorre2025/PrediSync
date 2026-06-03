@@ -1,6 +1,6 @@
 # PrediSync
 
-PrediSync es una app web estática para sincronizar una predicación entre dos dispositivos en la misma red Wi-Fi.
+PrediSync es una app web estática para sincronizar una predicación entre dos dispositivos usando internet con código de sala corto.
 
 ## Cómo usar desde GitHub Pages
 
@@ -20,15 +20,13 @@ PrediSync es una app web estática para sincronizar una predicación entre dos d
 
 1. El predicador abre `predisync-host.html` en Safari en su iPad.
 2. El traductor abre `predisync-guest.html` en Safari en su iPad.
-3. Ambos deben estar en la misma red Wi-Fi.
-4. El predicador pega su predicación en español en la página del host.
-5. El predicador pega también su versión en inglés en la misma página host.
-6. El predicador genera la oferta y la envía al traductor.
-7. El traductor pega la oferta, genera la respuesta y la envía al predicador.
-8. El predicador pega la respuesta y conecta.
-9. El traductor no pega texto: su página guest funciona como visor y recibe el inglés desde host.
-10. Al moverse el predicador por su texto en español, la página del traductor avanzará en la versión en inglés.
+3. El predicador crea una sala con un código de 4 dígitos y comparte ese código.
+4. El traductor entra con el mismo código de sala.
+5. No necesitan la misma Wi-Fi: cada iPad puede estar en redes distintas, pero ambos sí necesitan internet.
+6. El predicador pega su predicación en español y su versión en inglés en la página host.
+7. El traductor no pega texto: su página guest funciona como visor y recibe el inglés desde host.
+8. Al moverse el predicador por su texto en español, el visor del traductor avanza en la versión en inglés.
 
 ## Nota
 
-Una vez cargada la página, la comunicación entre los dos dispositivos se realiza por WebRTC en la red local, sin depender de un servidor externo.
+La sincronización en tiempo real usa una sala cloud (MQTT sobre WebSocket) para simplificar la conexión y evitar códigos largos de oferta/respuesta.

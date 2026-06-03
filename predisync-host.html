@@ -251,33 +251,16 @@ html[data-theme="light"] #offscriptOverlay { background: radial-gradient(circle 
     <!-- HOST -->
     <div id="hostFlow" class="hidden">
       <div class="card">
-        <h2 style="margin-top:0">Paso 1 · Genera tu código de oferta</h2>
-        <button class="btn primary full" onclick="Net.createOffer()">Generar código de oferta</button>
-        <label class="fld">Código de oferta (envíalo al intérprete)</label>
-        <textarea id="offerOut" readonly placeholder="Aparecerá aquí…"></textarea>
-        <button class="btn full" onclick="App.copy('offerOut')">📋 Copiar oferta</button>
-      </div>
-      <div class="card">
-        <h2 style="margin-top:0">Paso 2 · Pega la respuesta del intérprete</h2>
-        <textarea id="answerIn" placeholder="Pega aquí el código de respuesta…"></textarea>
-        <button class="btn primary full" onclick="Net.acceptAnswer()">Conectar</button>
+        <h2 style="margin-top:0">Sala por internet</h2>
+        <label class="fld">Código de sala (4 dígitos)</label>
+        <input id="roomCodeHost" inputmode="numeric" maxlength="4" placeholder="1234" style="width:100%;min-height:44px;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:18px;font-weight:700;letter-spacing:.18em;text-align:center">
+        <p class="muted" style="margin-top:10px">Comparte este código con el intérprete. No necesitan la misma Wi-Fi; ambos sí necesitan internet.</p>
+        <button class="btn primary full" onclick="Net.startHost()">Iniciar sala</button>
       </div>
     </div>
 
     <!-- GUEST -->
-    <div id="guestFlow" class="hidden">
-      <div class="card">
-        <h2 style="margin-top:0">Paso 1 · Pega la oferta del predicador</h2>
-        <textarea id="offerIn" placeholder="Pega aquí el código de oferta…"></textarea>
-        <button class="btn primary full" onclick="Net.acceptOffer()">Generar respuesta</button>
-      </div>
-      <div class="card">
-        <h2 style="margin-top:0">Paso 2 · Envía tu código de respuesta</h2>
-        <label class="fld">Código de respuesta (envíalo al predicador)</label>
-        <textarea id="answerOut" readonly placeholder="Aparecerá aquí…"></textarea>
-        <button class="btn full" onclick="App.copy('answerOut')">📋 Copiar respuesta</button>
-      </div>
-    </div>
+    <div id="guestFlow" class="hidden"></div>
 
     <p id="connErr" class="muted" style="color:var(--danger)"></p>
     <button class="btn full" onclick="window.location.href='index.html'">← Volver</button>
@@ -377,20 +360,19 @@ html[data-theme="light"] #offscriptOverlay { background: radial-gradient(circle 
 <!-- ====== MENÚ CONTEXTUAL ANOTACIONES ====== -->
 <div id="ctxMenu" class="hidden"></div>
 
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 <script>
 /* ============================================================
    PrediSync — App de archivo único
    ============================================================ */
 
 /* === VERSIÓN: súbela +1 en CADA cambio del archivo (anti-caché) === */
-const APP_VERSION = "1.004";
+const APP_VERSION = "1.005";
 document.getElementById('versionBadge').textContent = "v" + APP_VERSION;
 
-const ICE_CONFIG = {
-  iceServers: [
-    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }
-  ],
-  iceCandidatePoolSize: 2
+const CLOUD_SYNC = {
+  brokerUrl: 'wss://test.mosquitto.org:8081/mqtt',
+  topicPrefix: 'predisync/v3'
 };
 
 /* ============================================================
@@ -398,8 +380,8 @@ const ICE_CONFIG = {
    ============================================================ */
 const State = {
   role: 'host',         // 'host' | 'guest'
-  pc: null,
-  dc: null,
+  syncClient: null,
+  roomCode: '',
   connected: false,
   paragraphsEs: [],
   paragraphsEn: [],
@@ -411,7 +393,6 @@ const State = {
   fontSizeLevel: 1,      // 0..3
   palette: null,
   lastOffer: null,
-  connectWatchdog: null,
 };
 const FONT_SIZES = [0.85, 1, 1.18, 1.4];
 
@@ -502,111 +483,94 @@ const Sanitize = {
 };
 
 /* ============================================================
-   RED — WebRTC señalización manual (Fase 1)
+   RED — Sala cloud por codigo corto (MQTT sobre WebSocket)
    ============================================================ */
 const Net = {
-  init() {
-    State.pc = new RTCPeerConnection(ICE_CONFIG);
-    State.pc.oniceconnectionstatechange = Net.onIceChange;
-    State.pc.onconnectionstatechange = Net.onConnChange;
+  topic(roomCode) {
+    return `${CLOUD_SYNC.topicPrefix}/${roomCode}`;
   },
-  setupChannel(ch) {
-    State.dc = ch;
-    ch.onopen = () => {
-      State.connected = true;
-      clearTimeout(State.connectWatchdog);
-      App.connErr('');
-      App.onConnected();
-    };
-    ch.onclose = () => { State.connected = false; App.setConn('err', 'Sin conexión'); };
-    ch.onmessage = (e) => Protocol.receive(e.data);
+  normalizeRoomCode(raw) {
+    return String(raw || '').replace(/\D/g, '').slice(0, 4);
   },
-  startConnectWatchdog() {
-    clearTimeout(State.connectWatchdog);
-    State.connectWatchdog = setTimeout(() => {
-      if (!State.connected) {
-        App.setConn('err', 'Conexión fallida');
-        App.connErr('Sigue en "Conectando". Revisa que ambos iPads estén en la misma Wi-Fi sin AP Isolation, o usa hotspot del iPhone y genera códigos nuevos.');
-      }
-    }, 20000);
+  randomRoomCode() {
+    return String(Math.floor(1000 + Math.random() * 9000));
   },
-  waitIce(timeoutMs = 10000) {
-    return new Promise((res) => {
-      if (State.pc.iceGatheringState === 'complete') return res();
-      const check = () => {
-        if (State.pc.iceGatheringState === 'complete') {
-          clearTimeout(timer);
-          State.pc.removeEventListener('icegatheringstatechange', check);
-          res();
-        }
-      };
-      State.pc.addEventListener('icegatheringstatechange', check);
-      const timer = setTimeout(() => {
-        State.pc.removeEventListener('icegatheringstatechange', check);
-        res();
-      }, timeoutMs);
-    });
-  },
-  enc(obj) { return btoa(unescape(encodeURIComponent(JSON.stringify(obj)))); },
-  dec(str) { return JSON.parse(decodeURIComponent(escape(atob(str.trim())))); },
-
-  async createOffer() {
-    Net.init();
-    const ch = State.pc.createDataChannel('predisync', { ordered: true });
-    Net.setupChannel(ch);
-    const offer = await State.pc.createOffer();
-    await State.pc.setLocalDescription(offer);
-    await Net.waitIce();
-    State.lastOffer = State.pc.localDescription;
-    document.getElementById('offerOut').value = Net.enc(State.pc.localDescription);
-    App.setConn('warn', 'Esperando respuesta…');
-  },
-  async acceptAnswer() {
-    try {
-      const ans = Net.dec(document.getElementById('answerIn').value);
-      await State.pc.setRemoteDescription(ans);
-      App.setConn('warn', 'Conectando…');
-      Net.startConnectWatchdog();
-    } catch (e) { App.connErr('Código de respuesta inválido. Verifica y reintenta.'); }
-  },
-  async acceptOffer() {
-    try {
-      Net.init();
-      State.pc.ondatachannel = (e) => Net.setupChannel(e.channel);
-      const offer = Net.dec(document.getElementById('offerIn').value);
-      await State.pc.setRemoteDescription(offer);
-      const answer = await State.pc.createAnswer();
-      await State.pc.setLocalDescription(answer);
-      await Net.waitIce();
-      document.getElementById('answerOut').value = Net.enc(State.pc.localDescription);
-      App.setConn('warn', 'Esperando conexión…');
-      Net.startConnectWatchdog();
-    } catch (e) { App.connErr('Código de oferta inválido. Verifica y reintenta.'); }
-  },
-  onIceChange() {
-    const st = State.pc.iceConnectionState;
-    if (st === 'failed') {
-      App.setConn('err', 'Conexión fallida');
-      App.connErr('La red puede estar bloqueando conexión peer-to-peer (AP Isolation). Prueba con hotspot del iPhone.');
+  startHost() {
+    const room = Net.normalizeRoomCode(document.getElementById('roomCodeHost').value);
+    if (room.length !== 4) {
+      App.connErr('Ingresa un codigo de sala de 4 digitos.');
       return;
     }
-    if ((st === 'disconnected' || st === 'failed') && State.connected) {
-      Reconnect.start();
-    } else if (st === 'connected' || st === 'completed') {
-      Reconnect.stop();
-    }
+    State.roomCode = room;
+    App.connErr('');
+    Net.connect();
   },
-  onConnChange() {
-    const st = State.pc.connectionState;
-    if (st === 'connected') {
-      clearTimeout(State.connectWatchdog);
-      App.setConn('ok', 'Conectado');
-    } else if (st === 'connecting') {
-      App.setConn('warn', 'Conectando…');
-    } else if (st === 'failed' || st === 'disconnected') {
-      App.setConn('err', 'Sin conexión');
-      App.connErr('Conexión no establecida. Reintenta con códigos nuevos o cambia a hotspot compartido.');
+  connect() {
+    if (!window.mqtt) {
+      App.setConn('err', 'Sin libreria MQTT');
+      App.connErr('No se pudo cargar el cliente de sincronizacion. Recarga la pagina e intenta de nuevo.');
+      return;
     }
+    const clientId = `predisync_${State.role}_${State.roomCode}_${Math.random().toString(16).slice(2, 8)}`;
+    const client = mqtt.connect(CLOUD_SYNC.brokerUrl, {
+      clientId,
+      clean: true,
+      reconnectPeriod: 2000,
+      connectTimeout: 10000
+    });
+    State.syncClient = client;
+    App.setConn('warn', 'Conectando sala…');
+
+    client.on('connect', () => {
+      client.subscribe(Net.topic(State.roomCode), { qos: 0 }, (err) => {
+        if (err) {
+          App.setConn('err', 'Error de suscripcion');
+          App.connErr('No fue posible entrar a la sala. Intenta con otro codigo.');
+          return;
+        }
+        State.connected = true;
+        App.setConn('ok', `Sala ${State.roomCode} conectada`);
+        App.onConnected();
+      });
+    });
+
+    client.on('message', (_topic, payload) => {
+      let msg;
+      try {
+        msg = JSON.parse(payload.toString());
+      } catch (e) {
+        return;
+      }
+      if (msg.room !== State.roomCode || msg.sender === State.role) return;
+      if (msg.type === 'join' && State.role === 'host') {
+        if (State.paragraphsEs.length || State.paragraphsEn.length) {
+          Reader.broadcastSermon();
+          Protocol.send({ type: 'scroll', index: State.activeIndex });
+          Protocol.send({ type: 'offscript', value: State.offscript });
+        }
+        return;
+      }
+      Protocol.receive(JSON.stringify(msg));
+    });
+
+    client.on('reconnect', () => {
+      App.setConn('warn', 'Reconectando sala…');
+    });
+
+    client.on('close', () => {
+      State.connected = false;
+      App.setConn('err', 'Sin conexion');
+    });
+
+    client.on('error', () => {
+      App.setConn('err', 'Error de conexion');
+      App.connErr('No se pudo conectar a la sala por internet. Verifica tu conexion e intenta de nuevo.');
+    });
+  },
+  publish(obj) {
+    if (!State.syncClient || !State.connected) return;
+    const msg = { ...obj, sender: State.role, room: State.roomCode, ts: Date.now() };
+    State.syncClient.publish(Net.topic(State.roomCode), JSON.stringify(msg), { qos: 0 });
   }
 };
 
@@ -642,7 +606,7 @@ const Reconnect = {
    PROTOCOLO DE MENSAJES (Fase 2)
    ============================================================ */
 const Protocol = {
-  send(obj) { if (State.dc && State.dc.readyState === 'open') State.dc.send(JSON.stringify(obj)); },
+  send(obj) { Net.publish(obj); },
   receive(raw) {
     let msg; try { msg = JSON.parse(raw); } catch (e) { return; }
     switch (msg.type) {
@@ -1097,6 +1061,7 @@ document.addEventListener('keydown', (e) => {
   App.show('screenConnect');
   document.getElementById('hostFlow').classList.remove('hidden');
   document.getElementById('connTitle').textContent = 'Conexión · Predicador';
+  document.getElementById('roomCodeHost').value = Net.randomRoomCode();
 })();
 </script>
 </body>

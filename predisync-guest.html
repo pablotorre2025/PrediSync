@@ -329,6 +329,7 @@ const State = {
   syncClient: null,
   roomCode: '',
   connected: false,
+  lastSyncRequestAt: 0,
   paragraphsEs: [],
   paragraphsEn: [],
   annotations: [],       // {paraIndex,start,end,label}
@@ -474,6 +475,7 @@ const Net = {
         State.connected = true;
         App.setConn('ok', `Sala ${State.roomCode} conectada`);
         Net.publish({ type: 'join' });
+        Net.sendSyncRequest();
         App.onConnected();
       });
     });
@@ -486,6 +488,14 @@ const Net = {
         return;
       }
       if (msg.room !== State.roomCode || msg.sender === State.role) return;
+      if ((msg.type === 'join' || msg.type === 'sync_request') && State.role === 'host') {
+        if (State.paragraphsEs.length || State.paragraphsEn.length) {
+          Reader.broadcastSermon();
+          Protocol.send({ type: 'scroll', index: State.activeIndex });
+          Protocol.send({ type: 'offscript', value: State.offscript });
+        }
+        return;
+      }
       Protocol.receive(JSON.stringify(msg));
     });
 
@@ -507,6 +517,13 @@ const Net = {
     if (!State.syncClient || !State.connected) return;
     const msg = { ...obj, sender: State.role, room: State.roomCode, ts: Date.now() };
     State.syncClient.publish(Net.topic(State.roomCode), JSON.stringify(msg), { qos: 0 });
+  },
+  sendSyncRequest() {
+    if (State.role !== 'guest') return;
+    const now = Date.now();
+    if (now - State.lastSyncRequestAt < 1500) return;
+    State.lastSyncRequestAt = now;
+    Net.publish({ type: 'sync_request' });
   }
 };
 
@@ -553,9 +570,11 @@ const Protocol = {
         Reader.render();
         break;
       case 'scroll':
+        if (State.role === 'guest' && State.paragraphsEn.length === 0) Net.sendSyncRequest();
         Reader.setActive(msg.index, false);
         break;
       case 'offscript':
+        if (State.role === 'guest' && State.paragraphsEn.length === 0) Net.sendSyncRequest();
         Reader.applyOffscript(msg.value);
         break;
       case 'annotation':

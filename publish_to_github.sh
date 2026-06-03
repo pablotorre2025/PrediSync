@@ -6,6 +6,14 @@ cd "$(dirname "$0")"
 echo "Publicar PrediSync en GitHub"
 print -n "Usuario GitHub: "
 read -r GH_USER
+
+# Si pegan un correo por error, tomamos la parte previa a @ como intento de usuario.
+if [[ "$GH_USER" == *"@"* ]]; then
+  GH_USER_CANDIDATE="${GH_USER%%@*}"
+  echo "Detectado correo. Usaré '$GH_USER_CANDIDATE' como usuario GitHub."
+  GH_USER="$GH_USER_CANDIDATE"
+fi
+
 print -n "Repositorio (default: PrediSync): "
 read -r GH_REPO
 if [[ -z "$GH_REPO" ]]; then
@@ -21,7 +29,13 @@ else
 fi
 
 echo "Usando remote: $REMOTE_URL"
-git push -u origin main
+if ! git push -u origin main; then
+  echo ""
+  echo "No se pudo hacer push. Verifica dos cosas:"
+  echo "1) Que el repo exista en GitHub: https://github.com/new?name=${GH_REPO}&visibility=public"
+  echo "2) Que escribiste tu usuario de GitHub (no correo)."
+  exit 1
+fi
 
 echo ""
 echo "Push completado. Ahora activa GitHub Pages:"

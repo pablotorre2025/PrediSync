@@ -313,7 +313,7 @@ html[data-theme="light"] #offscriptOverlay { background: radial-gradient(circle 
    ============================================================ */
 
 /* === VERSIÓN: súbela +1 en CADA cambio del archivo (anti-caché) === */
-const APP_VERSION = "1.012";
+const APP_VERSION = "1.013";
 document.getElementById('versionBadge').textContent = "v" + APP_VERSION;
 
 const CLOUD_SYNC = {
@@ -580,9 +580,9 @@ const Protocol = {
         }
         State.annotations = msg.annotations || [];
         Reader.render();
-+        if (State.role === 'guest' && Reader.hasVisibleText(State.paragraphsEn)) {
-+          App.enterReader();
-+        }
+        if (State.role === 'guest' && Reader.hasVisibleText(State.paragraphsEn)) {
+          App.enterReader();
+        }
         break;
       case 'scroll':
         if (State.role === 'guest' && State.paragraphsEn.length === 0) Net.sendSyncRequest();

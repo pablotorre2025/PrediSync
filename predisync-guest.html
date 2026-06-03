@@ -59,12 +59,22 @@ button { font-family: inherit; cursor: pointer; color: inherit; }
 
 /* ===================== BADGE VERSIÓN ===================== */
 #versionBadge {
-  position: fixed; bottom: 8px; right: 10px; z-index: 9999;
-  font-size: 11px; font-variant-numeric: tabular-nums;
-  color: var(--text-dim); background: var(--bg-elev);
-  border: 1px solid var(--border); border-radius: 999px;
-  padding: 3px 9px; letter-spacing: .3px; pointer-events: none;
-  opacity: .85; user-select: none;
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 8px);
+  right: 10px;
+  z-index: 9999;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  background: linear-gradient(135deg, #1f66ff, #4a7eff);
+  border: 1px solid rgba(255,255,255,.28);
+  border-radius: 999px;
+  padding: 5px 11px;
+  letter-spacing: .35px;
+  pointer-events: none;
+  user-select: none;
+  box-shadow: 0 10px 28px rgba(20,60,200,.35);
 }
 
 /* ===================== LAYOUT GENÉRICO ===================== */
@@ -319,7 +329,7 @@ html[data-theme="light"] #offscriptOverlay { background: radial-gradient(circle 
    ============================================================ */
 
 /* === VERSIÓN: súbela +1 en CADA cambio del archivo (anti-caché) === */
-const APP_VERSION = "1.003";
+const APP_VERSION = "1.004";
 document.getElementById('versionBadge').textContent = "v" + APP_VERSION;
 
 const ICE_CONFIG = {
@@ -347,6 +357,7 @@ const State = {
   fontSizeLevel: 1,      // 0..3
   palette: null,
   lastOffer: null,
+  connectWatchdog: null,
 };
 const FONT_SIZES = [0.85, 1, 1.18, 1.4];
 
@@ -447,9 +458,23 @@ const Net = {
   },
   setupChannel(ch) {
     State.dc = ch;
-    ch.onopen = () => { State.connected = true; App.onConnected(); };
+    ch.onopen = () => {
+      State.connected = true;
+      clearTimeout(State.connectWatchdog);
+      App.connErr('');
+      App.onConnected();
+    };
     ch.onclose = () => { State.connected = false; App.setConn('err', 'Sin conexión'); };
     ch.onmessage = (e) => Protocol.receive(e.data);
+  },
+  startConnectWatchdog() {
+    clearTimeout(State.connectWatchdog);
+    State.connectWatchdog = setTimeout(() => {
+      if (!State.connected) {
+        App.setConn('err', 'Conexión fallida');
+        App.connErr('Sigue en "Conectando". Revisa que ambos iPads estén en la misma Wi-Fi sin AP Isolation, o usa hotspot del iPhone y genera códigos nuevos.');
+      }
+    }, 20000);
   },
   waitIce(timeoutMs = 10000) {
     return new Promise((res) => {
@@ -487,6 +512,7 @@ const Net = {
       const ans = Net.dec(document.getElementById('answerIn').value);
       await State.pc.setRemoteDescription(ans);
       App.setConn('warn', 'Conectando…');
+      Net.startConnectWatchdog();
     } catch (e) { App.connErr('Código de respuesta inválido. Verifica y reintenta.'); }
   },
   async acceptOffer() {
@@ -500,10 +526,16 @@ const Net = {
       await Net.waitIce();
       document.getElementById('answerOut').value = Net.enc(State.pc.localDescription);
       App.setConn('warn', 'Esperando conexión…');
+      Net.startConnectWatchdog();
     } catch (e) { App.connErr('Código de oferta inválido. Verifica y reintenta.'); }
   },
   onIceChange() {
     const st = State.pc.iceConnectionState;
+    if (st === 'failed') {
+      App.setConn('err', 'Conexión fallida');
+      App.connErr('La red puede estar bloqueando conexión peer-to-peer (AP Isolation). Prueba con hotspot del iPhone.');
+      return;
+    }
     if ((st === 'disconnected' || st === 'failed') && State.connected) {
       Reconnect.start();
     } else if (st === 'connected' || st === 'completed') {
@@ -512,7 +544,15 @@ const Net = {
   },
   onConnChange() {
     const st = State.pc.connectionState;
-    if (st === 'connected') App.setConn('ok', 'Conectado');
+    if (st === 'connected') {
+      clearTimeout(State.connectWatchdog);
+      App.setConn('ok', 'Conectado');
+    } else if (st === 'connecting') {
+      App.setConn('warn', 'Conectando…');
+    } else if (st === 'failed' || st === 'disconnected') {
+      App.setConn('err', 'Sin conexión');
+      App.connErr('Conexión no establecida. Reintenta con códigos nuevos o cambia a hotspot compartido.');
+    }
   }
 };
 

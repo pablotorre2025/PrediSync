@@ -226,6 +226,41 @@ html[data-theme="light"] #offscriptOverlay { background: radial-gradient(circle 
 .hist-item .meta .t { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hist-item .meta .d { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
 
+/* ===================== FICHAS MANUALES ===================== */
+.cards-tools { display: flex; gap: 8px; flex-wrap: wrap; }
+.cards-list { display: grid; gap: 10px; margin-top: 10px; }
+.card-item {
+  border: 1px solid var(--border);
+  border-left-width: 6px;
+  border-radius: 10px;
+  background: var(--bg-elev);
+  padding: 10px;
+}
+.card-item .row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.card-item .title { flex: 1; min-height: 38px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); padding: 0 10px; font-weight: 700; }
+.card-item .color { width: 44px; height: 38px; border: 1px solid var(--border); border-radius: 8px; background: transparent; }
+.card-item .mini-editor {
+  min-height: 92px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  padding: 10px;
+  margin-bottom: 8px;
+  font-family: var(--reader-font);
+  line-height: 1.5;
+  outline: none;
+}
+.card-item textarea {
+  width: 100%;
+  min-height: 88px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  padding: 10px;
+  resize: vertical;
+}
+
 /* ===================== MENÚ CONTEXTUAL (anotaciones) ===================== */
 #ctxMenu { position: fixed; z-index: 6000; background: var(--bg-elev); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 30px rgba(0,0,0,.4); padding: 6px; }
 #ctxMenu button { display: block; width: 100%; min-height: 40px; padding: 0 14px; background: transparent; border: none; text-align: left; font-size: 14px; border-radius: 8px; }
@@ -311,7 +346,7 @@ html[data-theme="light"] #offscriptOverlay { background: radial-gradient(circle 
     </div>
     <div class="editor" id="editorEs" contenteditable="true" data-ph="Pega o escribe aquí tu predicación. Separa los párrafos con una línea en blanco."></div>
 
-    <details style="margin-top:14px">
+    <details style="margin-top:14px" open>
       <summary class="muted" style="cursor:pointer">Color de texto y paleta de resaltado</summary>
       <div class="card">
         <label class="fld">Color de texto</label>
@@ -326,6 +361,15 @@ html[data-theme="light"] #offscriptOverlay { background: radial-gradient(circle 
 
     <h2>Texto en Inglés (versión del traductor)</h2>
     <textarea id="textEn" placeholder="Pega aquí tu traducción en inglés. Usa línea en blanco para separar párrafos."></textarea>
+
+    <h2>Fichas manuales (Opción 2)</h2>
+    <p class="muted">Pega todo tu sermón una sola vez y crea fichas desde la selección. Cada ficha puede tener nombre, color, texto en español y texto en inglés.</p>
+    <div class="cards-tools">
+      <button class="btn" onclick="Cards.createFromSelection()">Crear ficha desde selección</button>
+      <button class="btn" onclick="Cards.addEmpty()">Nueva ficha vacía</button>
+      <button class="btn" onclick="Cards.clearAll()">Limpiar fichas</button>
+    </div>
+    <div id="cardsList" class="cards-list"></div>
 
     <p id="loadWarn" class="muted" style="color:var(--warn)"></p>
     <button class="btn primary full" style="margin-top:16px" onclick="App.startSession()">Cargar y comenzar ▶</button>
@@ -369,7 +413,7 @@ html[data-theme="light"] #offscriptOverlay { background: radial-gradient(circle 
    ============================================================ */
 
 /* === VERSIÓN: súbela +1 en CADA cambio del archivo (anti-caché) === */
-const APP_VERSION = "1.014";
+const APP_VERSION = "1.015";
 document.getElementById('versionBadge').textContent = "v" + APP_VERSION;
 
 const CLOUD_SYNC = {
@@ -386,6 +430,8 @@ const State = {
   roomCode: '',
   connected: false,
   lastSyncRequestAt: 0,
+  cards: [],
+  cardMeta: [],
   paragraphsEs: [],
   paragraphsEn: [],
   annotations: [],       // {paraIndex,start,end,label}
@@ -624,6 +670,7 @@ const Protocol = {
         {
           const es = (msg.paragraphs_es || []).map(Sanitize.clean);
           const en = (msg.paragraphs_en || []).map(Sanitize.clean);
+          State.cardMeta = Array.isArray(msg.card_meta) ? msg.card_meta : [];
           const enHasText = Reader.hasVisibleText(en);
           const esHasText = Reader.hasVisibleText(es);
           State.paragraphsEs = es;
@@ -677,6 +724,7 @@ const FONTS = [
 const SIZES = [11,12,13,14,15,16,17,18,20,22,24,26,28,30,32,34,36,40,44,48,50,52];
 const DEFAULT_PALETTE = ['#FFFF00','#FFB347','#FFB6C1','#ADFF2F','#87CEEB','#98FF98','#E6E6FA','#FFDAB9','#AFEEEE','#F08080'];
 const DEFAULT_TEXT_COLORS = ['#111111','#1f66ff','#0ea5e9','#16a34a','#eab308','#ea580c','#dc2626','#7c3aed','#db2777','#ffffff'];
+const DEFAULT_CARD_COLORS = ['#4f8cff','#2ecc71','#f5a623','#ff5362','#9b59b6','#00bcd4','#ffb347','#7ed957'];
 
 const Editor = {
   hiliteSel: 0,
@@ -707,7 +755,12 @@ const Editor = {
   },
   applyStyle(cmd, val) { document.getElementById('editorEs').focus(); document.execCommand(cmd, false, val); },
   escapeHtml(text) {
-    return String(text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return String(text || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   },
   splitPlainIntoParagraphs(text) {
     const plain = String(text || '').replace(/\r\n/g, '\n');
@@ -800,6 +853,138 @@ const Editor = {
   }
 };
 
+const Cards = {
+  colorAt(i) {
+    return DEFAULT_CARD_COLORS[i % DEFAULT_CARD_COLORS.length];
+  },
+  sanitizeHtml(html) {
+    return Sanitize.clean((html || '').trim());
+  },
+  titleFromHtml(html, fallback) {
+    const t = Reader.plainText(html).slice(0, 40);
+    return t || fallback;
+  },
+  createFromSelection() {
+    const editor = document.getElementById('editorEs');
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
+      App.toast('Selecciona texto del sermón para crear una ficha');
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    const anchor = range.commonAncestorContainer.nodeType === 1 ? range.commonAncestorContainer : range.commonAncestorContainer.parentElement;
+    if (!anchor || !editor.contains(anchor)) {
+      App.toast('La selección debe estar dentro del editor en español');
+      return;
+    }
+    const box = document.createElement('div');
+    box.appendChild(range.cloneContents());
+    const html = Cards.sanitizeHtml(box.innerHTML);
+    if (!Reader.plainText(html)) {
+      App.toast('La selección está vacía');
+      return;
+    }
+    const idx = State.cards.length;
+    State.cards.push({
+      id: 'card-' + Date.now() + '-' + idx,
+      title: Cards.titleFromHtml(html, 'Ficha ' + (idx + 1)),
+      color: Cards.colorAt(idx),
+      es: html,
+      en: ''
+    });
+    Cards.render();
+    App.toast('Ficha creada');
+  },
+  addEmpty() {
+    const idx = State.cards.length;
+    State.cards.push({
+      id: 'card-' + Date.now() + '-' + idx,
+      title: 'Ficha ' + (idx + 1),
+      color: Cards.colorAt(idx),
+      es: '<p></p>',
+      en: ''
+    });
+    Cards.render();
+  },
+  removeAt(i) {
+    State.cards.splice(i, 1);
+    Cards.render();
+  },
+  move(i, dir) {
+    const j = i + dir;
+    if (j < 0 || j >= State.cards.length) return;
+    const tmp = State.cards[i];
+    State.cards[i] = State.cards[j];
+    State.cards[j] = tmp;
+    Cards.render();
+  },
+  clearAll() {
+    State.cards = [];
+    Cards.render();
+  },
+  render() {
+    const list = document.getElementById('cardsList');
+    if (!list) return;
+    list.innerHTML = '';
+    if (!State.cards.length) {
+      list.innerHTML = '<p class="muted">Aún no hay fichas. Selecciona texto del editor y pulsa "Crear ficha desde selección".</p>';
+      return;
+    }
+    State.cards.forEach((card, i) => {
+      const item = document.createElement('div');
+      item.className = 'card-item';
+      item.style.borderLeftColor = card.color || Cards.colorAt(i);
+      item.innerHTML = [
+        '<div class="row">',
+        `<input class="title" data-i="${i}" value="${Editor.escapeHtml(card.title || '')}" placeholder="Nombre de ficha">`,
+        `<input class="color" data-i="${i}" type="color" value="${card.color || Cards.colorAt(i)}">`,
+        `<button class="btn" data-act="up" data-i="${i}">↑</button>`,
+        `<button class="btn" data-act="down" data-i="${i}">↓</button>`,
+        `<button class="btn danger" data-act="del" data-i="${i}">🗑</button>`,
+        '</div>',
+        `<div class="mini-editor" contenteditable="true" data-role="es" data-i="${i}">${card.es || '<p></p>'}</div>`,
+        `<textarea data-role="en" data-i="${i}" placeholder="Inglés de esta ficha">${card.en || ''}</textarea>`
+      ].join('');
+
+      item.querySelector('.title').addEventListener('input', (e) => {
+        card.title = e.target.value.trim() || ('Ficha ' + (i + 1));
+      });
+      item.querySelector('.color').addEventListener('input', (e) => {
+        card.color = e.target.value;
+        item.style.borderLeftColor = card.color;
+      });
+      item.querySelector('[data-act="up"]').addEventListener('click', () => Cards.move(i, -1));
+      item.querySelector('[data-act="down"]').addEventListener('click', () => Cards.move(i, 1));
+      item.querySelector('[data-act="del"]').addEventListener('click', () => Cards.removeAt(i));
+      item.querySelector('[data-role="es"]').addEventListener('input', (e) => {
+        card.es = Cards.sanitizeHtml(e.target.innerHTML);
+      });
+      item.querySelector('[data-role="en"]').addEventListener('input', (e) => {
+        card.en = e.target.value;
+      });
+      list.appendChild(item);
+    });
+  },
+  toSessionPayload() {
+    const cleanCards = State.cards
+      .map((c, i) => ({
+        title: (c.title || ('Ficha ' + (i + 1))).trim(),
+        color: c.color || Cards.colorAt(i),
+        es: Cards.sanitizeHtml(c.es || ''),
+        en: String(c.en || '').trim()
+      }))
+      .filter((c) => Reader.plainText(c.es).length > 0 || c.en.length > 0);
+
+    const es = cleanCards.map((c) => c.es || '<p></p>');
+    const en = cleanCards.map((c) => {
+      const parts = Editor.splitPlainIntoParagraphs(c.en);
+      return parts.length ? parts.join('') : '<p></p>';
+    });
+    const meta = cleanCards.map((c, i) => ({ title: c.title || ('Ficha ' + (i + 1)), color: c.color }));
+    return { es, en, meta };
+  }
+};
+
 /* ============================================================
    VISTA LECTOR (Fases 4 y 5)
    ============================================================ */
@@ -836,6 +1021,11 @@ const Reader = {
       const div = document.createElement('div');
       div.className = 'para' + (i === State.activeIndex ? ' active' : '');
       div.dataset.index = i;
+      const meta = State.cardMeta[i] || null;
+      if (meta && meta.color) {
+        div.style.borderLeftColor = meta.color;
+        div.style.boxShadow = `inset 0 0 0 1px ${meta.color}33, 0 14px 32px rgba(0,0,0,.06)`;
+      }
       const rendered = Reader.applyAnnotations(Reader.normalizePara(html), i);
       div.innerHTML = rendered;
       if (!div.textContent.trim()) {
@@ -874,6 +1064,8 @@ const Reader = {
     Reader.getParas().forEach((_, i) => {
       const b = document.createElement('button');
       b.textContent = i + 1;
+      const meta = State.cardMeta[i] || null;
+      if (meta && meta.title) b.title = meta.title;
       if (i === State.activeIndex) b.classList.add('active');
       b.addEventListener('click', () => Reader.setActive(i, true));
       nav.appendChild(b);
@@ -919,7 +1111,7 @@ const Reader = {
     });
   },
   broadcastSermon() {
-    Protocol.send({ type: 'sermon', format: 'html', paragraphs_es: State.paragraphsEs, paragraphs_en: State.paragraphsEn, annotations: State.annotations });
+    Protocol.send({ type: 'sermon', format: 'html', paragraphs_es: State.paragraphsEs, paragraphs_en: State.paragraphsEn, card_meta: State.cardMeta, annotations: State.annotations });
   },
   toggleLang() {
     State.showingLang = State.showingLang === 'es' ? 'en' : 'es';
@@ -1018,14 +1210,19 @@ const App = {
     if (State.role === 'host') {
       App.show('screenLoad');
       App.refreshHistory();
+      Cards.render();
     } else {
       App.show('screenLoad');
     }
   },
   startSession() {
     if (State.role === 'host') {
-      const es = Editor.extractParagraphs();
-      const en = Editor.splitPlainIntoParagraphs(document.getElementById('textEn').value);
+      const usingCards = State.cards.length > 0;
+      const payload = usingCards
+        ? Cards.toSessionPayload()
+        : { es: Editor.extractParagraphs(), en: Editor.splitPlainIntoParagraphs(document.getElementById('textEn').value), meta: [] };
+      const es = payload.es;
+      const en = payload.en;
       if (es.length === 0) { document.getElementById('loadWarn').textContent = 'Escribe el texto de tu predicación.'; return; }
       if (en.length === 0) { document.getElementById('loadWarn').textContent = 'Pega también tu versión en inglés para el traductor.'; return; }
       if (en.length !== es.length) {
@@ -1033,12 +1230,18 @@ const App = {
       }
       State.paragraphsEs = es;
       State.paragraphsEn = en;
+      State.cardMeta = payload.meta;
       State.showingLang = 'es';
       State.activeIndex = 0;
       const rec = {
         id: 'id-' + Date.now(), date: new Date().toISOString(),
-        title: (es[0] || '').replace(/<[^>]+>/g, '').slice(0, 80) || 'Sin título',
-        paragraphs_es: es, paragraphs_en: en, annotations: State.annotations, palette: State.palette
+        title: (payload.meta[0] && payload.meta[0].title) || (es[0] || '').replace(/<[^>]+>/g, '').slice(0, 80) || 'Sin título',
+        paragraphs_es: es,
+        paragraphs_en: en,
+        card_meta: payload.meta,
+        cards: State.cards,
+        annotations: State.annotations,
+        palette: State.palette
       };
       DB.saveSermon(rec);
       App.pruneHistory();
@@ -1110,8 +1313,11 @@ const App = {
   loadHistory(rec) {
     State.paragraphsEs = rec.paragraphs_es;
     State.paragraphsEn = rec.paragraphs_en || [];
+    State.cardMeta = rec.card_meta || [];
+    State.cards = rec.cards || [];
     State.annotations = rec.annotations || [];
     if (rec.palette) { State.palette = rec.palette; Editor.renderSwatches(); }
+    Cards.render();
     State.activeIndex = 0;
     Reader.broadcastSermon();
     App.enterReader();
@@ -1148,6 +1354,7 @@ document.addEventListener('keydown', (e) => {
   else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) document.documentElement.setAttribute('data-theme', 'light');
   else document.documentElement.setAttribute('data-theme', 'dark');
   await Editor.init();
+  Cards.render();
   Annotate.init();
   App.show('screenConnect');
   document.getElementById('hostFlow').classList.remove('hidden');

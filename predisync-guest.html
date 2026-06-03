@@ -313,7 +313,7 @@ html[data-theme="light"] #offscriptOverlay { background: radial-gradient(circle 
    ============================================================ */
 
 /* === VERSIÓN: súbela +1 en CADA cambio del archivo (anti-caché) === */
-const APP_VERSION = "1.014";
+const APP_VERSION = "1.015";
 document.getElementById('versionBadge').textContent = "v" + APP_VERSION;
 
 const CLOUD_SYNC = {
@@ -330,6 +330,7 @@ const State = {
   roomCode: '',
   connected: false,
   lastSyncRequestAt: 0,
+  cardMeta: [],
   paragraphsEs: [],
   paragraphsEn: [],
   annotations: [],       // {paraIndex,start,end,label}
@@ -567,6 +568,7 @@ const Protocol = {
         {
           const es = (msg.paragraphs_es || []).map(Sanitize.clean);
           const en = (msg.paragraphs_en || []).map(Sanitize.clean);
+          State.cardMeta = Array.isArray(msg.card_meta) ? msg.card_meta : [];
           const enHasText = Reader.hasVisibleText(en);
           const esHasText = Reader.hasVisibleText(es);
           State.paragraphsEs = es;
@@ -739,6 +741,11 @@ const Reader = {
       const div = document.createElement('div');
       div.className = 'para' + (i === State.activeIndex ? ' active' : '');
       div.dataset.index = i;
+      const meta = State.cardMeta[i] || null;
+      if (meta && meta.color) {
+        div.style.borderLeftColor = meta.color;
+        div.style.boxShadow = `inset 0 0 0 1px ${meta.color}33, 0 14px 32px rgba(0,0,0,.06)`;
+      }
       const rendered = Reader.applyAnnotations(Reader.normalizePara(html), i);
       div.innerHTML = rendered;
       if (!div.textContent.trim()) {
@@ -777,6 +784,8 @@ const Reader = {
     Reader.getParas().forEach((_, i) => {
       const b = document.createElement('button');
       b.textContent = i + 1;
+      const meta = State.cardMeta[i] || null;
+      if (meta && meta.title) b.title = meta.title;
       if (i === State.activeIndex) b.classList.add('active');
       b.addEventListener('click', () => Reader.setActive(i, true));
       nav.appendChild(b);
@@ -822,7 +831,7 @@ const Reader = {
     });
   },
   broadcastSermon() {
-    Protocol.send({ type: 'sermon', format: 'html', paragraphs_es: State.paragraphsEs, paragraphs_en: State.paragraphsEn, annotations: State.annotations });
+    Protocol.send({ type: 'sermon', format: 'html', paragraphs_es: State.paragraphsEs, paragraphs_en: State.paragraphsEn, card_meta: State.cardMeta, annotations: State.annotations });
   },
   toggleLang() {
     State.showingLang = State.showingLang === 'es' ? 'en' : 'es';
@@ -1002,6 +1011,7 @@ const App = {
   loadHistory(rec) {
     State.paragraphsEs = rec.paragraphs_es;
     State.paragraphsEn = rec.paragraphs_en || [];
+    State.cardMeta = rec.card_meta || [];
     State.annotations = rec.annotations || [];
     if (rec.palette) { State.palette = rec.palette; Editor.renderSwatches(); }
     State.activeIndex = 0;

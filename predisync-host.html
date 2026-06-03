@@ -136,22 +136,26 @@ label.fld { display: block; font-size: 13px; font-weight: 600; margin: 14px 0 6p
 
 /* ===================== EDITOR (F14) ===================== */
 .toolbar {
-  display: flex; gap: 6px; overflow-x: auto; overflow-y: visible; padding: 8px; background: var(--bg-elev2);
+  display: flex; flex-wrap: wrap; gap: 8px; overflow: visible; padding: 10px; background: var(--bg-elev2);
   border: 1px solid var(--border); border-bottom: none; border-radius: 10px 10px 0 0;
-  -webkit-overflow-scrolling: touch;
 }
-.toolbar .grp { display: flex; gap: 4px; padding-right: 8px; border-right: 1px solid var(--border); margin-right: 2px; align-items: center; }
-.toolbar .grp:last-child { border-right: none; }
+.toolbar .grp {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
 .tbtn {
-  min-width: 38px; height: 38px; padding: 0 8px; border-radius: 8px;
+  min-width: 36px; height: 36px; padding: 0 8px; border-radius: 8px;
   border: 1px solid var(--border); background: var(--bg); font-size: 14px; font-weight: 600;
   display: inline-flex; align-items: center; justify-content: center; white-space: nowrap;
 }
-.tbtn.wide { min-width: 74px; padding: 0 10px; }
-.tbtn.select { min-width: 140px; padding: 0 6px; }
+.tbtn.wide { min-width: 96px; padding: 0 12px; }
 .tbtn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 .tbtn select { background: transparent; border: none; color: inherit; font-size: 13px; outline: none; }
-.tbtn.select select { width: 100%; }
 .toolbar-palette {
   background: var(--bg-elev);
   border: 1px solid var(--border);
@@ -373,11 +377,7 @@ html[data-theme="light"] #offscriptOverlay { background: radial-gradient(circle 
         <button class="tbtn" id="hiliteBtn" title="Resaltar">🖍 ▾</button>
       </div>
       <div class="grp">
-        <span class="tbtn select">
-          <select id="cardTargetSelect" title="Ficha destino"></select>
-        </span>
-        <button class="tbtn wide" id="cardFromSelBtn" title="Guardar selección en ficha">+ Ficha</button>
-        <button class="tbtn wide" id="cardEmptyBtn" title="Nueva ficha vacía">Vacía</button>
+        <button class="tbtn wide" id="cardFromSelBtn" title="Crear ficha desde selección">+ Ficha</button>
       </div>
     </div>
     <div id="toolbarPaletteHost" class="toolbar-palette hidden">
@@ -391,7 +391,7 @@ html[data-theme="light"] #offscriptOverlay { background: radial-gradient(circle 
 
     <details style="margin-top:14px">
       <summary class="muted" style="cursor:pointer">Editor de fichas (nombre, color y traducción)</summary>
-      <p class="muted cards-note">Selecciona texto y usa la barra superior para crear o actualizar fichas sin salir del editor.</p>
+      <p class="muted cards-note">Selecciona texto y usa + Ficha en la barra para crear una ficha nueva sin sobrescribir otras.</p>
       <div class="cards-tools">
         <button class="btn danger" onclick="Cards.clearAll()">Limpiar todas las fichas</button>
       </div>
@@ -440,7 +440,7 @@ html[data-theme="light"] #offscriptOverlay { background: radial-gradient(circle 
    ============================================================ */
 
 /* === VERSIÓN: súbela +1 en CADA cambio del archivo (anti-caché) === */
-const APP_VERSION = "1.016";
+const APP_VERSION = "1.017";
 document.getElementById('versionBadge').textContent = "v" + APP_VERSION;
 
 const CLOUD_SYNC = {
@@ -458,7 +458,6 @@ const State = {
   connected: false,
   lastSyncRequestAt: 0,
   cards: [],
-  cardTarget: -1,
   cardMeta: [],
   paragraphsEs: [],
   paragraphsEn: [],
@@ -976,17 +975,6 @@ const Cards = {
       return;
     }
 
-    const target = Cards.getSelectedTarget();
-    if (target >= 0 && target < State.cards.length) {
-      const current = Cards.sanitizeHtml(State.cards[target].es || '');
-      State.cards[target].es = current && Reader.plainText(current)
-        ? Cards.sanitizeHtml(current + '<p><br></p>' + html)
-        : html;
-      Cards.render();
-      App.toast('Texto agregado a ' + (State.cards[target].title || ('Ficha ' + (target + 1))));
-      return;
-    }
-
     const idx = State.cards.length;
     State.cards.push({
       id: 'card-' + Date.now() + '-' + idx,
@@ -995,7 +983,6 @@ const Cards = {
       es: html,
       en: ''
     });
-    State.cardTarget = idx;
     Cards.render();
     App.toast('Ficha creada');
   },
@@ -1008,7 +995,6 @@ const Cards = {
       es: '<p></p>',
       en: ''
     });
-    State.cardTarget = idx;
     Cards.render();
   },
   removeAt(i) {
@@ -1025,46 +1011,16 @@ const Cards = {
   },
   clearAll() {
     State.cards = [];
-    State.cardTarget = -1;
     Cards.render();
-  },
-  getSelectedTarget() {
-    const sel = document.getElementById('cardTargetSelect');
-    if (!sel) return -1;
-    const v = parseInt(sel.value, 10);
-    return Number.isNaN(v) ? -1 : v;
-  },
-  renderTargetSelect() {
-    const sel = document.getElementById('cardTargetSelect');
-    if (!sel) return;
-    const current = State.cardTarget;
-    sel.innerHTML = '<option value="-1">Nueva ficha</option>';
-    State.cards.forEach((card, i) => {
-      const o = document.createElement('option');
-      o.value = String(i);
-      o.textContent = (card.title || ('Ficha ' + (i + 1))).slice(0, 34);
-      sel.appendChild(o);
-    });
-    if (current >= 0 && current < State.cards.length) sel.value = String(current);
-    else sel.value = '-1';
-    State.cardTarget = parseInt(sel.value, 10);
   },
   initToolbar() {
     const fromSel = document.getElementById('cardFromSelBtn');
-    const empty = document.getElementById('cardEmptyBtn');
-    const target = document.getElementById('cardTargetSelect');
     if (fromSel) fromSel.addEventListener('click', () => Cards.createFromSelection());
-    if (empty) empty.addEventListener('click', () => Cards.addEmpty());
-    if (target) target.addEventListener('change', () => {
-      State.cardTarget = parseInt(target.value, 10);
-    });
-    Cards.renderTargetSelect();
   },
   render() {
     const list = document.getElementById('cardsList');
     if (!list) return;
     list.innerHTML = '';
-    Cards.renderTargetSelect();
     if (!State.cards.length) {
       list.innerHTML = '<p class="muted">Aún no hay fichas. Selecciona texto y usa + Ficha en la barra superior.</p>';
       return;
@@ -1087,7 +1043,6 @@ const Cards = {
 
       item.querySelector('.title').addEventListener('input', (e) => {
         card.title = e.target.value.trim() || ('Ficha ' + (i + 1));
-        Cards.renderTargetSelect();
       });
       item.querySelector('.color').addEventListener('input', (e) => {
         card.color = e.target.value;

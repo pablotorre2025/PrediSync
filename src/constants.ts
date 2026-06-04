@@ -1,6 +1,6 @@
 import type { SermonType, SmartLabel } from './types';
 
-export const APP_VERSION = '1.060';
+export const APP_VERSION = '1.059';
 
 export const DEFAULT_USERS = [
   { id: 'pablo' as const, name: 'Pablo', email: 'pablo@sermonmaker.local' },

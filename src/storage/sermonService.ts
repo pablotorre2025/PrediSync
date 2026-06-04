@@ -7,11 +7,16 @@ import type { Sermon, UserId } from '@/types';
 
 const COLLECTION = 'sermons';
 
+export function resolveSharedUserId(userId: UserId): UserId {
+  return userId === 'saida' ? 'pablo' : userId;
+}
+
 export function createEmptySermon(userId: UserId, tipo = 'expositivo'): Sermon {
   const now = Date.now();
+  const ownerId = resolveSharedUserId(userId);
   return {
     id: nanoid(),
-    userId,
+    userId: ownerId,
     titulo: 'Sermón sin título',
     pasaje: '',
     tipo,
@@ -30,8 +35,9 @@ export function createEmptySermon(userId: UserId, tipo = 'expositivo'): Sermon {
 }
 
 export async function listLocalSermons(userId: UserId): Promise<Sermon[]> {
+  const ownerId = resolveSharedUserId(userId);
   const sermons = await localDB.sermons
-    .where('userId').equals(userId)
+    .where('userId').equals(ownerId)
     .reverse().sortBy('updatedAt');
   return sermons.filter(s => !s.deletedAt);
 }
@@ -48,11 +54,12 @@ export async function saveSermonLocal(s: Sermon): Promise<void> {
 }
 
 export async function deleteSermonLocal(id: string, userId: UserId): Promise<void> {
+  const ownerId = resolveSharedUserId(userId);
   const existing = await localDB.sermons.get(id);
   const now = Date.now();
   const tombstone: Sermon = {
-    ...(existing ?? createDeletedSermonPlaceholder(id, userId, now)),
-    userId,
+    ...(existing ?? createDeletedSermonPlaceholder(id, ownerId, now)),
+    userId: ownerId,
     updatedAt: now,
     deletedAt: now,
     localDirty: true
@@ -61,7 +68,7 @@ export async function deleteSermonLocal(id: string, userId: UserId): Promise<voi
   await localDB.sermons.put(tombstone);
   await clearVersions(id);
   try {
-    await pushDirtySermons(userId);
+    await pushDirtySermons(ownerId);
   } catch {
     // El tombstone queda localDirty para sincronizarse cuando vuelva la conexión.
   }
@@ -97,7 +104,8 @@ function sanitizeForFirestore(obj: Record<string, unknown>): Record<string, unkn
 
 /** Sube los sermones marcados como `localDirty` a Firestore. */
 export async function pushDirtySermons(userId: UserId): Promise<number> {
-  const all = await localDB.sermons.where('userId').equals(userId).toArray();
+  const ownerId = resolveSharedUserId(userId);
+  const all = await localDB.sermons.where('userId').equals(ownerId).toArray();
   const dirty = all.filter(s => s.localDirty === true);
   let count = 0;
   for (const s of dirty) {
@@ -120,7 +128,8 @@ export async function pushDirtySermons(userId: UserId): Promise<number> {
 
 /** Trae sermones del usuario desde Firestore y los fusiona con los locales (last-write-wins por updatedAt). */
 export async function pullRemoteSermons(userId: UserId): Promise<number> {
-  const q = query(collection(db, COLLECTION), where('userId', '==', userId));
+  const ownerId = resolveSharedUserId(userId);
+  const q = query(collection(db, COLLECTION), where('userId', '==', ownerId));
   const snap = await getDocs(q);
   let count = 0;
   const remoteIds = new Set<string>();
@@ -147,7 +156,7 @@ export async function pullRemoteSermons(userId: UserId): Promise<number> {
     }
   }
 
-  const locals = await localDB.sermons.where('userId').equals(userId).toArray();
+  const locals = await localDB.sermons.where('userId').equals(ownerId).toArray();
   for (const local of locals) {
     if (local.deletedAt || local.localDirty) continue;
     if (!local.syncedAt && !local.remoteVersion) continue;

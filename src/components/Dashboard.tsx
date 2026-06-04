@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { localDB } from '@/storage/db';
 import { useAppStore } from '@/store';
-import { createEmptySermon, saveSermonLocal, deleteSermonLocal } from '@/storage/sermonService';
+import { createEmptySermon, saveSermonLocal, deleteSermonLocal, resolveSharedUserId } from '@/storage/sermonService';
 import type { Sermon } from '@/types';
 
 type StatusFilter = 'todos' | 'borrador' | 'listo' | 'predicado' | 'archivado' | 'favoritos';
@@ -17,9 +17,11 @@ export function Dashboard() {
   const [tagFilter, setTagFilter] = useState<string>('');
   const [sortBy, setSortBy] = useState<'updatedAt' | 'titulo' | 'createdAt'>('updatedAt');
 
+  const ownerId = resolveSharedUserId(user.id);
+
   const sermones = useLiveQuery(
-    () => localDB.sermons.where('userId').equals(user.id).toArray(),
-    [user.id]
+    () => localDB.sermons.where('userId').equals(ownerId).toArray(),
+    [ownerId]
   ) ?? [];
 
   const visibleSermones = useMemo(() => sermones.filter(s => !s.deletedAt), [sermones]);
@@ -52,7 +54,7 @@ export function Dashboard() {
   }, [visibleSermones, filter, tagFilter, query, sortBy]);
 
   async function newSermon() {
-    const s = createEmptySermon(user.id);
+    const s = createEmptySermon(ownerId);
     await saveSermonLocal(s);
     void triggerSync();
     nav(`/sermon/${s.id}`);
@@ -73,7 +75,7 @@ export function Dashboard() {
   async function remove(s: Sermon, e: React.MouseEvent) {
     e.stopPropagation();
     if (!confirm(`¿Eliminar "${s.titulo}"?`)) return;
-    await deleteSermonLocal(s.id, user.id);
+    await deleteSermonLocal(s.id, ownerId);
     void triggerSync();
   }
 

@@ -1,0 +1,16 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function authMatchesUser(userId) {
+      return request.auth != null
+        && request.auth.token.email is string
+        && request.auth.token.email.matches('^' + userId + '(@.*|[-].*@.*)$');
+    }
+
+    match /bibles/{userId}/{fileName} {
+      // Las Biblias son contenido público — lectura y listado sin autenticación
+      allow get, list: if true;
+      allow write: if authMatchesUser(userId);
+    }
+  }
+}

@@ -116,7 +116,7 @@ export function PredicationMode() {
         <button className="ghost-btn" onClick={() => nav(-1)}>← Salir</button>
         <button className="icon-btn" onClick={() => setFontSize(f => Math.max(f - 2, 14))} aria-label="Disminuir tamaño">A−</button>
         <button className="icon-btn" onClick={() => setFontSize(f => Math.min(f + 2, 96))} aria-label="Aumentar tamaño">A+</button>
-        <div className="progress">{sermon.titulo}</div>
+        <div className="progress">{sermon.titulo || 'Sermón sin título'}</div>
         <button className="ghost-btn" onClick={() => {
           setNotesMode('all');
           setShowNotes(current => !current || notesMode !== 'all');
@@ -126,7 +126,25 @@ export function PredicationMode() {
         <span className="pill">{fontSize}px</span>
       </div>
 
-      <div className="predication-panel" onClick={handlePanelClick} dangerouslySetInnerHTML={{ __html: contentHTML }} />
+      <div className="predication-content">
+        <header className="predication-header-card">
+          <div>
+            <p className="predication-kicker">Modo predicación</p>
+            <h1 className="predication-title">{sermon.titulo || 'Sermón sin título'}</h1>
+            {sermon.pasaje ? (
+              <div className="predication-passage-card">
+                <div className="predication-passage-label">Pasaje base</div>
+                <div className="predication-passage-ref">{sermon.pasaje}</div>
+                {sermon.pasajeVersion && <div className="predication-passage-version">{sermon.pasajeVersion}</div>}
+                {sermon.pasajeTexto && <div className="predication-passage-text">{sermon.pasajeTexto}</div>}
+              </div>
+            ) : null}
+          </div>
+          <span className="pill">{sermon.tipo}</span>
+        </header>
+
+        <article className="predication-panel" onClick={handlePanelClick} dangerouslySetInnerHTML={{ __html: contentHTML }} />
+      </div>
 
       {showNotes && <button className="predication-notes-backdrop" aria-label="Cerrar notas" onClick={() => {
         setShowNotes(false);
